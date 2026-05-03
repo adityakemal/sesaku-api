@@ -18,10 +18,10 @@ const JWT_SECRET = process.env.JWT_SECRET || "sesaku_jwt_secret_lokal";
 await initDb();
 console.log("✅ Database initialized");
 
-const app = new Elysia()
+const app = new Elysia({ aot: false })
   .use(
     cors({
-      origin: process.env.FRONTEND_URL || "*",
+      origin: process.env.FRONTEND_URL || "http://localhost:3000",
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization"],
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
