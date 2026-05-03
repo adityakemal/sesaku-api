@@ -34,6 +34,13 @@ const app = new Elysia({ aot: false })
   .onError(({ code, error, set }) => {
     const pgError = error as { code?: string; message?: string };
 
+    // Always add CORS headers on error responses (Elysia bypasses cors middleware on throws)
+    const origin = process.env.FRONTEND_URL || "http://localhost:3000";
+    set.headers["Access-Control-Allow-Origin"] = origin;
+    set.headers["Access-Control-Allow-Credentials"] = "true";
+    set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+    set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+
     // Postgres unique violation
     if (pgError.code === "23505") {
       set.status = 409;

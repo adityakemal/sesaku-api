@@ -17,7 +17,7 @@ export const categoryRoutes = new Elysia()
 
         if (rows.length === 0) {
           for (const name of DEFAULTS) {
-            await sql`INSERT INTO categories (user_id, name) VALUES (${uid}, ${name})`;
+            await sql`INSERT INTO categories (user_id, name) VALUES (${uid}, ${name}) ON CONFLICT DO NOTHING`;
           }
           return await sql<Category[]>`
             SELECT id, user_id, name, created_at FROM categories
