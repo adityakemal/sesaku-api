@@ -21,11 +21,11 @@ console.log("✅ Database initialized");
 const app = new Elysia()
   .use(
     cors({
-      origin: "*",
+      origin: process.env.FRONTEND_URL || "*",
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization"],
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    })
+    }),
   )
   .use(cookie())
   .use(jwt({ name: "jwt", secret: JWT_SECRET }))
@@ -96,8 +96,14 @@ const app = new Elysia()
     const method = request.method;
     if (path === "/health" || !uid) return;
 
-    const ts = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    console.log(`[${ts}] ${method} ${path} — ${(uid as string).slice(0, 8)}...`);
+    const ts = new Date().toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    console.log(
+      `[${ts}] ${method} ${path} — ${(uid as string).slice(0, 8)}...`,
+    );
 
     if (method === "GET") return;
     if (method === "DELETE") return;
@@ -117,7 +123,9 @@ const app = new Elysia()
       if (b && typeof b === "object") {
         if (path.includes("transactions")) {
           const name = b.name || "";
-          const nominal = b.nominal ? Number(b.nominal).toLocaleString("id-ID") : "0";
+          const nominal = b.nominal
+            ? Number(b.nominal).toLocaleString("id-ID")
+            : "0";
           detail = `${name}: Rp ${nominal}`;
         } else if (path.includes("budget")) {
           const amt = b.amount ? Number(b.amount).toLocaleString("id-ID") : "0";
@@ -166,15 +174,16 @@ const app = new Elysia()
       const limit = Math.min(Number(query.limit) || 20, 50);
       const cursor = Number(query.cursor) || 0;
 
-      const rows = cursor > 0
-        ? await sql`
+      const rows =
+        cursor > 0
+          ? await sql`
             SELECT id, action, detail, status, created_at
             FROM activity_logs
             WHERE user_id = ${uid} AND id < ${cursor}
             ORDER BY id DESC
             LIMIT ${limit}
           `
-        : await sql`
+          : await sql`
             SELECT id, action, detail, status, created_at
             FROM activity_logs
             WHERE user_id = ${uid}
@@ -187,7 +196,7 @@ const app = new Elysia()
         hasMore: rows.length === limit,
         nextCursor: rows.length > 0 ? rows[rows.length - 1].id : null,
       };
-    })
+    }),
   )
 
   .use(transactionRoutes)
