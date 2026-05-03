@@ -1,5 +1,4 @@
 import { Elysia } from "elysia";
-import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { cookie } from "@elysiajs/cookie";
 import sql from "./src/db";
@@ -18,28 +17,26 @@ const JWT_SECRET = process.env.JWT_SECRET || "sesaku_jwt_secret_lokal";
 await initDb();
 console.log("✅ Database initialized");
 
-const app = new Elysia({ aot: false })
-  .use(
-    cors({
-      origin: process.env.FRONTEND_URL || "http://localhost:3000",
-      credentials: true,
-      allowedHeaders: ["Content-Type", "Authorization"],
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    }),
-  )
+const ALLOWED_ORIGIN = process.env.FRONTEND_URL || "http://localhost:5173";
+
+const setCorsHeaders = (set: any, origin?: string | null) => {
+  const allow = origin || ALLOWED_ORIGIN;
+  set.headers["Access-Control-Allow-Origin"] = allow;
+  set.headers["Access-Control-Allow-Credentials"] = "true";
+  set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+  set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+};
+
+const app = new Elysia()
   .use(cookie())
   .use(jwt({ name: "jwt", secret: JWT_SECRET }))
 
   // Global error handler
-  .onError(({ code, error, set }) => {
-    const pgError = error as { code?: string; message?: string };
+  .onError(({ code, error, set, request }) => {
+    const origin = request?.headers?.get("origin");
+    setCorsHeaders(set, origin);
 
-    // Always add CORS headers on error responses (Elysia bypasses cors middleware on throws)
-    const origin = process.env.FRONTEND_URL || "http://localhost:3000";
-    set.headers["Access-Control-Allow-Origin"] = origin;
-    set.headers["Access-Control-Allow-Credentials"] = "true";
-    set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-    set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    const pgError = error as { code?: string; message?: string };
 
     // Postgres unique violation
     if (pgError.code === "23505") {
@@ -210,8 +207,39 @@ const app = new Elysia({ aot: false })
   .use(categoryRoutes)
   .use(budgetRoutes)
   .use(stateRoutes)
-  .use(ocrRoutes)
+  .use(ocrRoutes);
 
-  .listen(PORT);
+// Wrap Elysia with Bun.serve to inject CORS headers at the HTTP level.
+// This bypasses Elysia's hook scoping issues entirely — headers are
+// added to EVERY response regardless of plugin/derive scope.
+Bun.serve({
+  port: PORT,
+  fetch: async (req) => {
+    const origin = req.headers.get("origin") || "";
+    const corsHeaders: Record<string, string> = {
+      "Access-Control-Allow-Origin": origin || ALLOWED_ORIGIN,
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    };
+
+    // Handle preflight before Elysia (auth guard would block OPTIONS)
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    const res = await app.fetch(req);
+
+    // Clone the response and inject CORS headers
+    const headers = new Headers(res.headers);
+    for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
+  },
+});
 
 console.log(`🚀 sesaKu API running at http://localhost:${PORT}`);

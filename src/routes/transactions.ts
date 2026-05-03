@@ -4,8 +4,8 @@ import sql from "../db";
 import type { Transaction } from "../types";
 import { logActivity } from "../logger";
 
-export const transactionRoutes = new Elysia()
-  .group("/transactions", (app) =>
+export const transactionRoutes = (app: Elysia) =>
+  app.group("/transactions", (app) =>
     app
       .get("/", async ({ uid }) => {
         const rows = await sql<Transaction[]>`

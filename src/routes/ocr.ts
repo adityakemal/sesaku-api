@@ -2,8 +2,8 @@
 import { Elysia, t } from "elysia";
 import { processWithMindee } from "../services/mindee";
 
-export const ocrRoutes = new Elysia()
-  .group("/ocr", (app) =>
+export const ocrRoutes = (app: Elysia) =>
+  app.group("/ocr", (app) =>
     app.post(
       "/",
       async ({ body, set }) => {

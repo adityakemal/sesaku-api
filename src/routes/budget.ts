@@ -2,8 +2,8 @@
 import { Elysia, t } from "elysia";
 import sql from "../db";
 
-export const budgetRoutes = new Elysia()
-  .group("/budget", (app) =>
+export const budgetRoutes = (app: Elysia) =>
+  app.group("/budget", (app) =>
     app
       .get("/", async ({ uid }) => {
         const [defaultRow] = await sql<{ value: string }[]>`
