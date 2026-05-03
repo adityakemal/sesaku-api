@@ -1,12 +1,14 @@
 import postgres from "postgres";
 
-const sql = postgres({
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || "sesaku",
-  username: process.env.DB_USER || "sesaku",
-  password: process.env.DB_PASSWORD || "sesaku_pass",
-});
+const sql = process.env.DATABASE_URL
+  ? postgres(process.env.DATABASE_URL)
+  : postgres({
+      host: process.env.DB_HOST || "localhost",
+      port: Number(process.env.DB_PORT) || 5432,
+      database: process.env.DB_NAME || "sesaku",
+      username: process.env.DB_USER || "sesaku",
+      password: process.env.DB_PASSWORD || "sesaku_pass",
+    });
 
 export async function initDb() {
   // ── Users ──────────────────────────────────────────────
