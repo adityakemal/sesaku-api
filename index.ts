@@ -215,6 +215,7 @@ const app = new Elysia()
 // added to EVERY response regardless of plugin/derive scope.
 Bun.serve({
   port: PORT,
+  hostname: "0.0.0.0",
   fetch: async (req) => {
     const origin = req.headers.get("origin") || "";
     const corsHeaders: Record<string, string> = {
