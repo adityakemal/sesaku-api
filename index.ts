@@ -9,6 +9,7 @@ import { categoryRoutes } from "./src/routes/categories";
 import { budgetRoutes } from "./src/routes/budget";
 import { stateRoutes } from "./src/routes/state";
 import { ocrRoutes } from "./src/routes/ocr";
+import { workspaceRoutes } from "./src/routes/workspace";
 import { logActivity } from "./src/logger";
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -90,6 +91,12 @@ const app = new Elysia()
       return { success: false, message: "Silakan login terlebih dahulu" };
     }
 
+    // Forbidden Workspace
+    if (set.status === 403 || error?.message === "Forbidden workspace") {
+      set.status = 403;
+      return { success: false, message: "Akses ke workspace ditolak atau kamu sudah dihapus dari workspace ini.", code: "WORKSPACE_FORBIDDEN" };
+    }
+
     // Default
     console.error(`[${new Date().toISOString()}] ${code}:`, error?.message);
     set.status = 500;
@@ -154,7 +161,7 @@ const app = new Elysia()
 
   .use(authRoutes)
 
-  .derive(async ({ jwt, cookie: { auth_token }, set }) => {
+  .derive(async ({ jwt, cookie: { auth_token }, set, request }) => {
     const token = auth_token?.value;
     if (!token) {
       set.status = 401;
@@ -165,12 +172,35 @@ const app = new Elysia()
       set.status = 401;
       throw new Error("Unauthorized");
     }
-    const uid = payload.sub;
+    const uid = payload.sub as string;
+    const email = payload.email as string;
     if (!uid) {
       set.status = 401;
       throw new Error("Invalid token");
     }
-    return { uid: uid as string };
+
+    // Check for workspace context
+    const requestedWorkspace = request.headers.get("x-workspace-id");
+    let activeUid = uid;
+
+    if (requestedWorkspace && requestedWorkspace !== uid) {
+      // Verify the user was invited to this workspace
+      const access = await sql`
+        SELECT id FROM workspace_members 
+        WHERE owner_id = ${requestedWorkspace} AND member_email = ${email}
+      `;
+      if (access.length > 0) {
+        activeUid = requestedWorkspace;
+      } else {
+        set.status = 403;
+        throw new Error("Forbidden workspace");
+      }
+    }
+
+    // realUid: the actual logged in user (used for managing own spaces/members)
+    // uid: the active workspace user_id (used for querying tx, categories, etc)
+    // userEmail: the logged in user's email
+    return { uid: activeUid, realUid: uid, userEmail: email };
   })
 
   // Activity logs endpoint — cursor-based pagination
@@ -208,7 +238,8 @@ const app = new Elysia()
   .use(categoryRoutes)
   .use(budgetRoutes)
   .use(stateRoutes)
-  .use(ocrRoutes);
+  .use(ocrRoutes)
+  .use(workspaceRoutes);
 
 // Wrap Elysia with Bun.serve to inject CORS headers at the HTTP level.
 // This bypasses Elysia's hook scoping issues entirely — headers are
@@ -222,7 +253,7 @@ Bun.serve({
       "Access-Control-Allow-Origin": origin || ALLOWED_ORIGIN,
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, x-workspace-id",
     };
 
     // Handle preflight before Elysia (auth guard would block OPTIONS)

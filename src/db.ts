@@ -60,6 +60,17 @@ export async function initDb() {
     )
   `;
 
+  // ── Workspace Members ──────────────────────────────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS workspace_members (
+      id           SERIAL PRIMARY KEY,
+      owner_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      member_email TEXT NOT NULL,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(owner_id, member_email)
+    )
+  `;
+
   // ── Budget Entries ─────────────────────────────────────
   await sql`
     CREATE TABLE IF NOT EXISTS budget_entries (
