@@ -68,20 +68,15 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   // POST /auth/google — Google OAuth login
   .post(
     "/google",
-    async ({ body, jwt, cookie }) => {
+    async ({ body, jwt, cookie, set }) => {
       const { credential } = body;
 
       const verifyRes = await fetch(
         `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
       );
       if (!verifyRes.ok) {
-        return new Response(
-          JSON.stringify({ error: "Google token tidak valid." }),
-          {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+        set.status = 401;
+        return { error: "Google token tidak valid." };
       }
       const googlePayload = (await verifyRes.json()) as {
         email: string;
@@ -92,13 +87,8 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       };
 
       if (googlePayload.email_verified !== "true") {
-        return new Response(
-          JSON.stringify({ error: "Email Google belum terverifikasi." }),
-          {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+        set.status = 401;
+        return { error: "Email Google belum terverifikasi." };
       }
 
       const user = await findOrCreateUser({
@@ -142,20 +132,16 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   })
 
   // GET /auth/me — verify session + return user profile
-  .get("/me", async ({ jwt, cookie }) => {
+  .get("/me", async ({ jwt, cookie, set }) => {
     const token = (cookie as any).auth_token?.value;
     if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      set.status = 401;
+      return { error: "Unauthorized" };
     }
     const payload = await jwt.verify(token);
     if (!payload) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      set.status = 401;
+      return { error: "Unauthorized" };
     }
     return {
       authenticated: true,
