@@ -1,47 +1,64 @@
-// @ts-nocheck - uid is provided by auth guard in index.ts
+
 import { Elysia, t } from "elysia";
 import sql from "../db";
 
-export const budgetRoutes = (app: Elysia) =>
-  app.group("/budget", (app) =>
+export const budgetRoutes = new Elysia()
+  .group("/budget", (app) =>
     app
       .get("/", async ({ uid }) => {
-        const [defaultRow] = await sql<{ value: string }[]>`
-          SELECT value FROM settings WHERE user_id = ${uid} AND key = 'defaultBudget'
+        return await sql`
+          SELECT id, date, amount, note, created_at
+          FROM budget_entries
+          WHERE user_id = ${uid}
+          ORDER BY date DESC
         `;
-        const defaultBudget = defaultRow ? parseInt(defaultRow.value, 10) : 0;
-        const monthlyRows = await sql<{ key: string; value: string }[]>`
-          SELECT key, value FROM settings WHERE user_id = ${uid} AND key LIKE 'budget_%'
-        `;
-        const monthlyBudgets = monthlyRows.map((r) => ({
-          month: r.key.replace("budget_", ""), amount: parseInt(r.value, 10),
-        }));
-        return { defaultBudget, monthlyBudgets };
       })
 
       .post(
         "/",
         async ({ uid, body }) => {
-          if (body.type === "default") {
-            await sql`
-              INSERT INTO settings (user_id, key, value)
-              VALUES (${uid}, 'defaultBudget', ${String(body.amount)})
-              ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value
-            `;
-          } else if (body.type === "monthly" && body.month) {
-            await sql`
-              INSERT INTO settings (user_id, key, value)
-              VALUES (${uid}, ${`budget_${body.month}`}, ${String(body.amount)})
-              ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value
-            `;
-          }
-          return { success: true };
+          const [row] = await sql`
+            INSERT INTO budget_entries (id, user_id, date, amount, note)
+            VALUES (${body.id || crypto.randomUUID()}, ${uid}, ${body.date || new Date().toISOString()}, ${body.amount}, ${body.note || ""})
+            RETURNING id, date, amount, note, created_at
+          `;
+          return row;
         },
         {
           body: t.Object({
-            type: t.Union([t.Literal("default"), t.Literal("monthly")]),
-            amount: t.Number(), month: t.Optional(t.String()),
+            id: t.Optional(t.String()),
+            date: t.Optional(t.String()),
+            amount: t.Number(),
+            note: t.Optional(t.String()),
           }),
         }
       )
+
+      .put(
+        "/:id",
+        async ({ uid, params, body, set }) => {
+          const [row] = await sql`
+            UPDATE budget_entries
+            SET amount = ${body.amount}, note = ${body.note || ""}
+            WHERE id = ${params.id} AND user_id = ${uid}
+            RETURNING id, date, amount, note, created_at
+          `;
+          if (!row) { set.status = 404; return { message: "Tidak ditemukan" }; }
+          return row;
+        },
+        {
+          body: t.Object({
+            amount: t.Number(),
+            note: t.Optional(t.String()),
+          }),
+        }
+      )
+
+      .delete("/:id", async ({ uid, params, set }) => {
+        const result = await sql`
+          DELETE FROM budget_entries WHERE id = ${params.id} AND user_id = ${uid}
+        `;
+        if (result.count === 0) { set.status = 404; return { message: "Tidak ditemukan" }; }
+        return { success: true };
+      })
   );

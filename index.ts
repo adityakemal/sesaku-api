@@ -23,7 +23,8 @@ const setCorsHeaders = (set: any, origin?: string | null) => {
   const allow = origin || ALLOWED_ORIGIN;
   set.headers["Access-Control-Allow-Origin"] = allow;
   set.headers["Access-Control-Allow-Credentials"] = "true";
-  set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+  set.headers["Access-Control-Allow-Methods"] =
+    "GET, POST, PUT, DELETE, OPTIONS";
   set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
 };
 
@@ -133,8 +134,8 @@ const app = new Elysia()
           detail = `${name}: Rp ${nominal}`;
         } else if (path.includes("budget")) {
           const amt = b.amount ? Number(b.amount).toLocaleString("id-ID") : "0";
-          const type = b.type === "default" ? "Default" : "Bulanan";
-          detail = `${type}: Rp ${amt}`;
+          const label = b.note || "Budget";
+          detail = `${label}: Rp ${amt}`;
         } else if (path.includes("categories")) {
           detail = b.name || "";
         }
