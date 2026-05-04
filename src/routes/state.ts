@@ -7,13 +7,27 @@ export const stateRoutes = (app: Elysia) =>
   app.group("/state", (app) =>
     app
     .get("/", async ({ uid }) => {
-      const transactions = await sql<Transaction[]>`
+      const [transactions, categories, [budgetRow], [txRow]] = await Promise.all([
+        sql<Transaction[]>`
           SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC
-        `;
-      const categories = await sql<Category[]>`
+        `,
+        sql<Category[]>`
           SELECT id, user_id, name, created_at FROM categories WHERE user_id = ${uid} ORDER BY name
-        `;
-      return { transactions, categories };
+        `,
+        sql<{ total: string }[]>`
+          SELECT COALESCE(SUM(amount), 0)::text AS total FROM budget_entries WHERE user_id = ${uid}
+        `,
+        sql<{ total: string }[]>`
+          SELECT COALESCE(SUM(nominal), 0)::text AS total FROM transactions WHERE user_id = ${uid}
+        `,
+      ]);
+
+      return {
+        transactions,
+        categories,
+        totalBudget: Number(budgetRow.total),
+        totalTransaction: Number(txRow.total),
+      };
     })
 
     .post(

@@ -48,17 +48,6 @@ export async function initDb() {
     )
   `;
 
-  // ── Settings (budgets) ─────────────────────────────────
-  await sql`
-    CREATE TABLE IF NOT EXISTS settings (
-      id       SERIAL PRIMARY KEY,
-      user_id  TEXT NOT NULL DEFAULT 'default',
-      key      TEXT NOT NULL,
-      value    TEXT NOT NULL,
-      UNIQUE(user_id, key)
-    )
-  `;
-
   // ── Activity logs ───────────────────────────────────────
   await sql`
     CREATE TABLE IF NOT EXISTS activity_logs (
@@ -71,7 +60,7 @@ export async function initDb() {
     )
   `;
 
-  // ── Budget Entries (replaces settings-based budgets) ───
+  // ── Budget Entries ─────────────────────────────────────
   await sql`
     CREATE TABLE IF NOT EXISTS budget_entries (
       id         TEXT PRIMARY KEY,
@@ -84,7 +73,9 @@ export async function initDb() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_budget_entries_user_date ON budget_entries (user_id, date)`;
 
-  // Migrate from old month field to date field
+  // ── Migrations ─────────────────────────────────────────
+
+  // budget_entries: add date column if missing (old schema had month)
   const hasDateCol = await sql`
     SELECT column_name FROM information_schema.columns
     WHERE table_name = 'budget_entries' AND column_name = 'date'
@@ -92,7 +83,6 @@ export async function initDb() {
   if (hasDateCol.length === 0) {
     await sql`ALTER TABLE budget_entries ADD COLUMN date TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
   }
-
   const hasMonthCol = await sql`
     SELECT column_name FROM information_schema.columns
     WHERE table_name = 'budget_entries' AND column_name = 'month'
@@ -102,25 +92,7 @@ export async function initDb() {
     await sql`ALTER TABLE budget_entries DROP COLUMN month`;
   }
 
-  // ── Migrations: add user_id to legacy tables ──────────
-
-  // Budget: migrate from settings to budget_entries table
-  const settingsBudgets = await sql<{ user_id: string; key: string; value: string }[]>`
-    SELECT user_id, key, value FROM settings WHERE key LIKE 'budget_%'
-  `;
-  if (settingsBudgets.length > 0) {
-    for (const row of settingsBudgets) {
-      const month = row.key.replace("budget_", "");
-      await sql`
-        INSERT INTO budget_entries (user_id, date, amount)
-        VALUES (${row.user_id}, ${(month + "-01")}::timestamptz, ${parseInt(row.value, 10) || 0})
-        ON CONFLICT DO NOTHING
-      `;
-    }
-    await sql`DELETE FROM settings WHERE key LIKE 'budget_%'`;
-  }
-
-  // Transactions: add user_id column if missing
+  // transactions: add user_id if missing
   const txHasUserId = await sql`
     SELECT column_name FROM information_schema.columns
     WHERE table_name = 'transactions' AND column_name = 'user_id'
@@ -129,7 +101,7 @@ export async function initDb() {
     await sql`ALTER TABLE transactions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'`;
   }
 
-  // Transactions: add details (JSONB) column for items/tax/discount
+  // transactions: add details (JSONB) if missing
   const txHasDetails = await sql`
     SELECT column_name FROM information_schema.columns
     WHERE table_name = 'transactions' AND column_name = 'details'
@@ -138,14 +110,13 @@ export async function initDb() {
     await sql`ALTER TABLE transactions ADD COLUMN details JSONB DEFAULT '{}'`;
   }
 
-  // Categories: migrate from global to per-user
+  // categories: add user_id if missing
   const catHasUserId = await sql`
     SELECT column_name FROM information_schema.columns
     WHERE table_name = 'categories' AND column_name = 'user_id'
   `;
   if (catHasUserId.length === 0) {
     await sql`ALTER TABLE categories ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'`;
-    // Drop old global unique constraint, add per-user unique
     await sql`ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_name_key`;
     await sql`ALTER TABLE categories DROP CONSTRAINT IF EXISTS categories_name_unique`;
     const hasUserUnique = await sql`
@@ -157,66 +128,44 @@ export async function initDb() {
     }
   }
 
-  // Settings: migrate from key-only PK to (user_id, key) composite
-  const setHasUserId = await sql`
-    SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'settings' AND column_name = 'user_id'
+  // settings: migrate remaining budget data then drop table
+  const settingsExists = await sql`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_name = 'settings'
   `;
-  if (setHasUserId.length === 0) {
-    await sql`ALTER TABLE settings ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'`;
-    // Drop old PK on key, add auto-increment id + composite unique
-    await sql`ALTER TABLE settings DROP CONSTRAINT IF EXISTS settings_pkey`;
-    // Add id column if missing (for new SERIAL PK)
-    const setIdCol = await sql`
-      SELECT column_name FROM information_schema.columns
-      WHERE table_name = 'settings' AND column_name = 'id'
+  if (settingsExists.length > 0) {
+    const settingsBudgets = await sql<{ user_id: string; key: string; value: string }[]>`
+      SELECT user_id, key, value FROM settings WHERE key LIKE 'budget_%'
     `;
-    if (setIdCol.length === 0) {
-      await sql`ALTER TABLE settings ADD COLUMN id SERIAL PRIMARY KEY`;
+    for (const row of settingsBudgets) {
+      const month = row.key.replace("budget_", "");
+      await sql`
+        INSERT INTO budget_entries (id, user_id, date, amount)
+        VALUES (gen_random_uuid()::text, ${row.user_id}, ${(month + "-01")}::timestamptz, ${parseInt(row.value, 10) || 0})
+        ON CONFLICT DO NOTHING
+      `;
     }
-    const hasSetUnique = await sql`
-      SELECT constraint_name FROM information_schema.table_constraints
-      WHERE table_name = 'settings' AND constraint_name = 'settings_user_id_key_key'
-    `;
-    if (hasSetUnique.length === 0) {
-      await sql`ALTER TABLE settings ADD CONSTRAINT settings_user_id_key_key UNIQUE (user_id, key)`;
-    }
+    await sql`DROP TABLE IF EXISTS settings CASCADE`;
   }
 
-  // ── Ensure case-insensitive unique index on categories ─
+  // ── Case-insensitive unique index on categories ────────
   await sql`DROP INDEX IF EXISTS idx_categories_name_lower`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_user_name_lower ON categories (user_id, LOWER(name))`;
 
-  // ── Clean legacy default-user data (if real users exist) ─
+  // ── Clean legacy default-user data ────────────────────
   const realUsers = await sql`SELECT COUNT(*) AS count FROM users WHERE id != 'default'`;
   if (Number(realUsers[0].count) > 0) {
     await sql`DELETE FROM transactions WHERE user_id = 'default'`;
     await sql`DELETE FROM categories WHERE user_id = 'default'`;
-    await sql`DELETE FROM settings WHERE user_id = 'default'`;
     await sql`DELETE FROM users WHERE id = 'default'`;
   }
 
-  // ── Seed default categories for default user ──────────
-  const [{ count }] = await sql`
-    SELECT COUNT(*) AS count FROM categories WHERE user_id = 'default'
-  `;
+  // ── Seed default categories ───────────────────────────
+  const [{ count }] = await sql`SELECT COUNT(*) AS count FROM categories WHERE user_id = 'default'`;
   if (Number(count) === 0) {
-    const defaults = ["Makanan", "Transport", "Belanja", "Hiburan", "Tagihan"];
-    for (const name of defaults) {
-      await sql`
-        INSERT INTO categories (user_id, name) VALUES ('default', ${name})
-      `;
+    for (const name of ["Makanan", "Transport", "Belanja", "Hiburan", "Tagihan"]) {
+      await sql`INSERT INTO categories (user_id, name) VALUES ('default', ${name})`;
     }
-  }
-
-  // ── Ensure default budget exists for default user ─────
-  const budgetRow = await sql`
-    SELECT value FROM settings WHERE user_id = 'default' AND key = 'defaultBudget'
-  `;
-  if (budgetRow.length === 0) {
-    await sql`
-      INSERT INTO settings (user_id, key, value) VALUES ('default', 'defaultBudget', '0')
-    `;
   }
 }
 

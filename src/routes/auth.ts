@@ -12,38 +12,20 @@ async function findOrCreateUser(googleUser: {
   picture: string;
   sub: string;
 }) {
-  const existing = await sql`
-    SELECT * FROM users WHERE google_id = ${googleUser.sub}
-  `;
+  const existing = await sql`SELECT * FROM users WHERE google_id = ${googleUser.sub}`;
   if (existing.length > 0) {
-    await sql`
-      UPDATE users SET name = ${googleUser.name}, avatar = ${googleUser.picture}
-      WHERE id = ${existing[0].id}
-    `;
+    await sql`UPDATE users SET name = ${googleUser.name}, avatar = ${googleUser.picture} WHERE id = ${existing[0].id}`;
     return existing[0];
   }
-
-  const byEmail = await sql`
-    SELECT * FROM users WHERE email = ${googleUser.email}
-  `;
+  const byEmail = await sql`SELECT * FROM users WHERE email = ${googleUser.email}`;
   if (byEmail.length > 0) {
-    await sql`
-      UPDATE users SET google_id = ${googleUser.sub}, avatar = ${googleUser.picture}
-      WHERE id = ${byEmail[0].id}
-    `;
+    await sql`UPDATE users SET google_id = ${googleUser.sub}, avatar = ${googleUser.picture} WHERE id = ${byEmail[0].id}`;
     return byEmail[0];
   }
-
   const id = crypto.randomUUID();
-  const avatar = googleUser.picture || "";
-  await sql`
-    INSERT INTO users (id, email, name, avatar, google_id)
-    VALUES (${id}, ${googleUser.email}, ${googleUser.name}, ${avatar}, ${googleUser.sub})
-  `;
+  await sql`INSERT INTO users (id, email, name, avatar, google_id) VALUES (${id}, ${googleUser.email}, ${googleUser.name}, ${googleUser.picture || ""}, ${googleUser.sub})`;
   const [user] = await sql`SELECT * FROM users WHERE id = ${id}`;
-  if (!user) {
-    throw new Error("Failed to create user");
-  }
+  if (!user) throw new Error("Failed to create user");
   return user;
 }
 
@@ -61,93 +43,72 @@ function setAuthCookie(
   });
 }
 
-export const authRoutes = new Elysia({ prefix: "/auth" })
-  .use(jwt({ name: "jwt", secret: SECRET }))
-  .use(cookie())
+// Plugin function — inherits cors + jwt + cookie from parent app
+export const authRoutes = (app: Elysia) =>
+  app.group("/auth", (app) =>
+    app
+      .use(jwt({ name: "jwt", secret: SECRET }))
+      .use(cookie())
 
-  // POST /auth/google — Google OAuth login
-  .post(
-    "/google",
-    async ({ body, jwt, cookie, set }) => {
-      const { credential } = body;
+      .post(
+        "/google",
+        async ({ body, jwt, cookie, set }) => {
+          const verifyRes = await fetch(
+            `https://oauth2.googleapis.com/tokeninfo?id_token=${body.credential}`
+          );
+          if (!verifyRes.ok) {
+            set.status = 401;
+            return { error: "Google token tidak valid." };
+          }
+          const googlePayload = (await verifyRes.json()) as {
+            email: string; name: string; picture: string;
+            sub: string; email_verified: string;
+          };
+          if (googlePayload.email_verified !== "true") {
+            set.status = 401;
+            return { error: "Email Google belum terverifikasi." };
+          }
+          const user = await findOrCreateUser({
+            email: googlePayload.email,
+            name: googlePayload.name,
+            picture: googlePayload.picture || "",
+            sub: googlePayload.sub,
+          });
+          const token = await jwt.sign({
+            sub: user.id, email: user.email,
+            name: user.name, avatar: user.avatar,
+            iat: Date.now(),
+          });
+          setAuthCookie(cookie as any, token);
+          logActivity({ user_id: user.id, action: "login", status: "success" });
+          return { success: true };
+        },
+        { body: t.Object({ credential: t.String() }) }
+      )
 
-      const verifyRes = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
-      );
-      if (!verifyRes.ok) {
-        set.status = 401;
-        return { error: "Google token tidak valid." };
-      }
-      const googlePayload = (await verifyRes.json()) as {
-        email: string;
-        name: string;
-        picture: string;
-        sub: string;
-        email_verified: string;
-      };
+      .post("/logout", async ({ jwt, cookie }) => {
+        try {
+          const token = (cookie as any).auth_token?.value;
+          if (token) {
+            const payload = await jwt.verify(token);
+            if (payload?.sub) {
+              await logActivity({ user_id: payload.sub as string, action: "logout", status: "success" });
+            }
+          }
+        } catch {}
+        (cookie as any).auth_token.remove();
+        return { success: true };
+      })
 
-      if (googlePayload.email_verified !== "true") {
-        set.status = 401;
-        return { error: "Email Google belum terverifikasi." };
-      }
-
-      const user = await findOrCreateUser({
-        email: googlePayload.email,
-        name: googlePayload.name,
-        picture: googlePayload.picture || "",
-        sub: googlePayload.sub,
-      });
-
-      const token = await jwt.sign({
-        sub: user.id,
-        email: user.email,
-        name: user.name,
-        avatar: user.avatar,
-        iat: Date.now(),
-      });
-
-      setAuthCookie(cookie as any, token);
-      logActivity({ user_id: user.id, action: "login", status: "success" });
-      return { success: true };
-    },
-    {
-      body: t.Object({ credential: t.String() }),
-    }
-  )
-
-  // POST /auth/logout
-  .post("/logout", async ({ jwt, cookie }) => {
-    // Try get user info before clearing cookie
-    try {
-      const token = (cookie as any).auth_token?.value;
-      if (token) {
+      .get("/me", async ({ jwt, cookie, set }) => {
+        const token = (cookie as any).auth_token?.value;
+        if (!token) { set.status = 401; return { error: "Unauthorized" }; }
         const payload = await jwt.verify(token);
-        if (payload?.sub) {
-          await logActivity({ user_id: payload.sub as string, action: "logout", status: "success" });
-        }
-      }
-    } catch {}
-    (cookie as any).auth_token.remove();
-    return { success: true };
-  })
-
-  // GET /auth/me — verify session + return user profile
-  .get("/me", async ({ jwt, cookie, set }) => {
-    const token = (cookie as any).auth_token?.value;
-    if (!token) {
-      set.status = 401;
-      return { error: "Unauthorized" };
-    }
-    const payload = await jwt.verify(token);
-    if (!payload) {
-      set.status = 401;
-      return { error: "Unauthorized" };
-    }
-    return {
-      authenticated: true,
-      sub: payload.sub,
-      email: payload.email,
-      name: payload.name,
-      avatar: payload.avatar,
-    };
-  });
+        if (!payload) { set.status = 401; return { error: "Unauthorized" }; }
+        return {
+          authenticated: true,
+          sub: payload.sub, email: payload.email,
+          name: payload.name, avatar: payload.avatar,
+        };
+      })
+  );

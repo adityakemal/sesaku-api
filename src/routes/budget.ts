@@ -39,7 +39,7 @@ export const budgetRoutes = new Elysia()
         async ({ uid, params, body, set }) => {
           const [row] = await sql`
             UPDATE budget_entries
-            SET amount = ${body.amount}, note = ${body.note || ""}
+            SET date = ${body.date}, amount = ${body.amount}, note = ${body.note || ""}
             WHERE id = ${params.id} AND user_id = ${uid}
             RETURNING id, date, amount, note, created_at
           `;
@@ -48,6 +48,7 @@ export const budgetRoutes = new Elysia()
         },
         {
           body: t.Object({
+            date: t.Optional(t.String()),
             amount: t.Number(),
             note: t.Optional(t.String()),
           }),
