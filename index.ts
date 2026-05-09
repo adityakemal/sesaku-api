@@ -10,6 +10,8 @@ import { budgetRoutes } from "./src/routes/budget";
 import { stateRoutes } from "./src/routes/state";
 import { ocrRoutes } from "./src/routes/ocr";
 import { workspaceRoutes } from "./src/routes/workspace";
+import { planRoutes } from "./src/routes/plans";
+import { statsRoutes } from "./src/routes/stats";
 import { logActivity } from "./src/logger";
 
 const PORT = Number(process.env.PORT) || 3001;
@@ -239,7 +241,9 @@ const app = new Elysia()
   .use(budgetRoutes)
   .use(stateRoutes)
   .use(ocrRoutes)
-  .use(workspaceRoutes);
+  .use(workspaceRoutes)
+  .use(planRoutes)
+  .use(statsRoutes);
 
 // Wrap Elysia with Bun.serve to inject CORS headers at the HTTP level.
 // This bypasses Elysia's hook scoping issues entirely — headers are

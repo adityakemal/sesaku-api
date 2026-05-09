@@ -7,11 +7,60 @@ import { logActivity } from "../logger";
 export const transactionRoutes = (app: Elysia) =>
   app.group("/transactions", (app) =>
     app
-      .get("/", async ({ uid }) => {
-        const rows = await sql<Transaction[]>`
-          SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC
-        `;
-        return rows;
+      .get("/", async ({ uid, query }) => {
+        const limit = Math.min(Number(query.limit) || 15, 50);
+        const cursor = query.cursor ? new Date(query.cursor as string).toISOString() : null;
+        const start = query.start ? new Date(query.start as string).toISOString() : null;
+        const end = query.end ? new Date(query.end as string).toISOString() : null;
+        
+        let rows;
+        let countRow;
+        
+        if (start && end) {
+          countRow = await sql`
+            SELECT COUNT(*) as total, COALESCE(SUM(nominal), 0) as amount FROM transactions
+            WHERE user_id = ${uid} AND date::timestamptz >= ${start}::timestamptz AND date::timestamptz <= ${end}::timestamptz
+          `;
+          
+          if (cursor) {
+            rows = await sql<Transaction[]>`
+              SELECT * FROM transactions 
+              WHERE user_id = ${uid} AND date::timestamptz >= ${start}::timestamptz AND date::timestamptz <= ${end}::timestamptz AND date::timestamptz < ${cursor}::timestamptz
+              ORDER BY date DESC LIMIT ${limit}
+            `;
+          } else {
+            rows = await sql<Transaction[]>`
+              SELECT * FROM transactions 
+              WHERE user_id = ${uid} AND date::timestamptz >= ${start}::timestamptz AND date::timestamptz <= ${end}::timestamptz
+              ORDER BY date DESC LIMIT ${limit}
+            `;
+          }
+        } else {
+          countRow = await sql`
+            SELECT COUNT(*) as total, COALESCE(SUM(nominal), 0) as amount FROM transactions
+            WHERE user_id = ${uid}
+          `;
+          
+          if (cursor) {
+            rows = await sql<Transaction[]>`
+              SELECT * FROM transactions WHERE user_id = ${uid} AND date::timestamptz < ${cursor}::timestamptz ORDER BY date DESC LIMIT ${limit}
+            `;
+          } else {
+            rows = await sql<Transaction[]>`
+              SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC LIMIT ${limit}
+            `;
+          }
+        }
+
+        const hasMore = rows.length === limit;
+        return {
+          success: true,
+          data: rows,
+          totalCount: Number(countRow[0].total),
+          totalAmount: Number(countRow[0].amount),
+          hasMore,
+          nextCursor: hasMore ? rows[rows.length - 1].date : null,
+        };
       })
 
       .post(

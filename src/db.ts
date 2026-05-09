@@ -84,6 +84,19 @@ export async function initDb() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_budget_entries_user_date ON budget_entries (user_id, date)`;
 
+  // ── Plans ──────────────────────────────────────────────
+  await sql`
+    CREATE TABLE IF NOT EXISTS plans (
+      id           TEXT PRIMARY KEY,
+      user_id      TEXT NOT NULL,
+      start_date   TEXT NOT NULL,
+      end_date     TEXT NOT NULL,
+      items        JSONB NOT NULL DEFAULT '[]',
+      total_amount BIGINT NOT NULL DEFAULT 0,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
   // ── Migrations ─────────────────────────────────────────
 
   // budget_entries: add date column if missing (old schema had month)

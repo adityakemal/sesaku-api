@@ -7,10 +7,7 @@ export const stateRoutes = (app: Elysia) =>
   app.group("/state", (app) =>
     app
     .get("/", async ({ uid }) => {
-      const [transactions, categories, [budgetRow], [txRow]] = await Promise.all([
-        sql<Transaction[]>`
-          SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC
-        `,
+      const [categories, [budgetRow], [txRow]] = await Promise.all([
         sql<Category[]>`
           SELECT id, user_id, name, created_at FROM categories WHERE user_id = ${uid} ORDER BY name
         `,
@@ -23,7 +20,7 @@ export const stateRoutes = (app: Elysia) =>
       ]);
 
       return {
-        transactions,
+        transactions: [], // Return empty array to not break legacy store code immediately, but it's no longer used
         categories,
         totalBudget: Number(budgetRow.total),
         totalTransaction: Number(txRow.total),
