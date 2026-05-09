@@ -168,6 +168,14 @@ export const statsRoutes = (app: Elysia) =>
         const planTotal = Number(plan.total_amount) || 0;
         const planSpent = Object.values(actualMap).reduce((s, v) => s + v, 0);
 
+        const planCategoryNames = new Set(planItems.map((pi) => pi.category));
+        const unbudgetedCategories = actualRows
+          .filter((r) => !planCategoryNames.has(r.category))
+          .map((r) => ({
+            category: r.category,
+            actual: Number(r.total),
+          }));
+
         return {
           success: true,
           data: {
@@ -183,6 +191,7 @@ export const statsRoutes = (app: Elysia) =>
               plan: Number(pi.nominal),
               actual: actualMap[pi.category] || 0,
             })),
+            unbudgetedCategories,
           },
         };
       })
