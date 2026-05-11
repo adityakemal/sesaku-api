@@ -4,6 +4,23 @@ import sql from "../db";
 import type { Transaction } from "../types";
 import { logActivity } from "../logger";
 
+const DAILY_MUTATION_LIMIT = 200;
+
+/** Returns 429 error string if user has hit the daily write limit, otherwise null. */
+async function checkDailyMutationLimit(uid: string): Promise<string | null> {
+  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+  const [{ count }] = await sql<[{ count: string }]>`
+    SELECT COUNT(*) AS count
+    FROM activity_logs
+    WHERE user_id = ${uid}
+      AND action IN ('CREATE transaksi', 'EDIT transaksi')
+      AND created_at::date = ${today}::date
+  `;
+  return Number(count) >= DAILY_MUTATION_LIMIT
+    ? `Batas harian tercapai. Maksimal ${DAILY_MUTATION_LIMIT} transaksi per hari.`
+    : null;
+}
+
 export const transactionRoutes = (app: Elysia) =>
   app.group("/transactions", (app) =>
     app
@@ -39,52 +56,18 @@ export const transactionRoutes = (app: Elysia) =>
               : await sql<Transaction[]>`
                 SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC, id DESC
               `;
+          const totalAmount = rows.reduce((acc, row) => acc + Number(row.nominal), 0);
           return {
             success: true,
             data: rows,
             totalCount: rows.length,
-            totalAmount: 0,
+            totalAmount,
             hasMore: false,
             nextCursor: null,
           };
         }
 
-        // ── Server-side search via pg_trgm (fuzzy + ILIKE) ──────────────────
-        if (search) {
-          const pattern = `%${search}%`;
-          const rows =
-            start && end
-              ? await sql<Transaction[]>`
-                SELECT *, similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) AS _score
-                FROM transactions
-                WHERE user_id = ${uid}
-                  AND date::timestamptz >= ${start}::timestamptz
-                  AND date::timestamptz <= ${end}::timestamptz
-                  AND (
-                    (name || ' ' || kategori || ' ' || COALESCE(keterangan, '')) ILIKE ${pattern}
-                    OR similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) > 0.15
-                  )
-                ORDER BY _score DESC, date DESC
-              `
-              : await sql<Transaction[]>`
-                SELECT *, similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) AS _score
-                FROM transactions
-                WHERE user_id = ${uid}
-                  AND (
-                    (name || ' ' || kategori || ' ' || COALESCE(keterangan, '')) ILIKE ${pattern}
-                    OR similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) > 0.15
-                  )
-                ORDER BY _score DESC, date DESC
-              `;
-          return {
-            success: true,
-            data: rows,
-            totalCount: rows.length,
-            totalAmount: 0,
-            hasMore: false,
-            nextCursor: null,
-          };
-        }
+
 
         let rows: Transaction[];
         let countRow: any[];
@@ -146,7 +129,13 @@ export const transactionRoutes = (app: Elysia) =>
 
       .post(
         "/",
-        async ({ uid, body }) => {
+        async ({ uid, body, set }) => {
+          const limitError = await checkDailyMutationLimit(uid);
+          if (limitError) {
+            set.status = 429;
+            return { success: false, message: limitError };
+          }
+
           const {
             id,
             name,
@@ -161,6 +150,7 @@ export const transactionRoutes = (app: Elysia) =>
             INSERT INTO transactions (id, user_id, name, nominal, kategori, keterangan, date, source, details)
             VALUES (${id}, ${uid}, ${name}, ${nominal}, ${kategori}, ${keterangan ?? ""}, ${date}, ${source ?? "Web"}, ${JSON.stringify(details ?? {})})
           `;
+          await logActivity({ user_id: uid, action: "CREATE transaksi", detail: name, status: "success" });
           return { success: true };
         },
         {
@@ -179,10 +169,15 @@ export const transactionRoutes = (app: Elysia) =>
 
       .put(
         "/:id",
-        async ({ uid, params, body }) => {
+        async ({ uid, params, body, set }) => {
+          const limitError = await checkDailyMutationLimit(uid);
+          if (limitError) {
+            set.status = 429;
+            return { success: false, message: limitError };
+          }
+
           const { id } = params;
-          const { name, nominal, kategori, keterangan, date, source, details } =
-            body;
+          const { name, nominal, kategori, keterangan, date, source, details } = body;
           const result = await sql`
             UPDATE transactions
             SET name = ${name}, nominal = ${nominal}, kategori = ${kategori},
@@ -192,6 +187,7 @@ export const transactionRoutes = (app: Elysia) =>
           `;
           if (result.count === 0)
             return { success: false, message: "Transaksi tidak ditemukan" };
+          await logActivity({ user_id: uid, action: "EDIT transaksi", detail: name, status: "success" });
           return { success: true };
         },
         {
