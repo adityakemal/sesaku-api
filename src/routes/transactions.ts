@@ -9,64 +9,154 @@ export const transactionRoutes = (app: Elysia) =>
     app
       .get("/", async ({ uid, query }) => {
         const limit = Math.min(Number(query.limit) || 15, 50);
-        const cursor = query.cursor ? new Date(query.cursor as string).toISOString() : null;
-        const start = query.start ? new Date(query.start as string).toISOString() : null;
-        const end = query.end ? new Date(query.end as string).toISOString() : null;
-        
-        let rows;
-        let countRow;
-        
+        const start = query.start
+          ? new Date(query.start as string).toISOString()
+          : null;
+        const end = query.end
+          ? new Date(query.end as string).toISOString()
+          : null;
+        const all = query.all === "true";
+        const search = (query.search as string | undefined)?.trim() || null;
+
+        // Compound cursor: "ISO_DATE|uuid"
+        const cursorRaw = query.cursor as string | undefined;
+        const [cursorDate, cursorId] = cursorRaw
+          ? cursorRaw.split("|")
+          : [null, null];
+        const cursorTs = cursorDate ? new Date(cursorDate).toISOString() : null;
+
+        // ── All rows (no pagination) — for CSV export ────────────────────────
+        if (all) {
+          const rows =
+            start && end
+              ? await sql<Transaction[]>`
+                SELECT * FROM transactions
+                WHERE user_id = ${uid}
+                  AND date::timestamptz >= ${start}::timestamptz
+                  AND date::timestamptz <= ${end}::timestamptz
+                ORDER BY date DESC, id DESC
+              `
+              : await sql<Transaction[]>`
+                SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC, id DESC
+              `;
+          return {
+            success: true,
+            data: rows,
+            totalCount: rows.length,
+            totalAmount: 0,
+            hasMore: false,
+            nextCursor: null,
+          };
+        }
+
+        // ── Server-side search via pg_trgm (fuzzy + ILIKE) ──────────────────
+        if (search) {
+          const pattern = `%${search}%`;
+          const rows =
+            start && end
+              ? await sql<Transaction[]>`
+                SELECT *, similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) AS _score
+                FROM transactions
+                WHERE user_id = ${uid}
+                  AND date::timestamptz >= ${start}::timestamptz
+                  AND date::timestamptz <= ${end}::timestamptz
+                  AND (
+                    (name || ' ' || kategori || ' ' || COALESCE(keterangan, '')) ILIKE ${pattern}
+                    OR similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) > 0.15
+                  )
+                ORDER BY _score DESC, date DESC
+              `
+              : await sql<Transaction[]>`
+                SELECT *, similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) AS _score
+                FROM transactions
+                WHERE user_id = ${uid}
+                  AND (
+                    (name || ' ' || kategori || ' ' || COALESCE(keterangan, '')) ILIKE ${pattern}
+                    OR similarity(name || ' ' || kategori || ' ' || COALESCE(keterangan, ''), ${search}) > 0.15
+                  )
+                ORDER BY _score DESC, date DESC
+              `;
+          return {
+            success: true,
+            data: rows,
+            totalCount: rows.length,
+            totalAmount: 0,
+            hasMore: false,
+            nextCursor: null,
+          };
+        }
+
+        let rows: Transaction[];
+        let countRow: any[];
+
         if (start && end) {
           countRow = await sql`
             SELECT COUNT(*) as total, COALESCE(SUM(nominal), 0) as amount FROM transactions
-            WHERE user_id = ${uid} AND date::timestamptz >= ${start}::timestamptz AND date::timestamptz <= ${end}::timestamptz
+            WHERE user_id = ${uid}
+              AND date::timestamptz >= ${start}::timestamptz
+              AND date::timestamptz <= ${end}::timestamptz
           `;
-          
-          if (cursor) {
-            rows = await sql<Transaction[]>`
-              SELECT * FROM transactions 
-              WHERE user_id = ${uid} AND date::timestamptz >= ${start}::timestamptz AND date::timestamptz <= ${end}::timestamptz AND date::timestamptz < ${cursor}::timestamptz
-              ORDER BY date DESC LIMIT ${limit}
-            `;
-          } else {
-            rows = await sql<Transaction[]>`
-              SELECT * FROM transactions 
-              WHERE user_id = ${uid} AND date::timestamptz >= ${start}::timestamptz AND date::timestamptz <= ${end}::timestamptz
-              ORDER BY date DESC LIMIT ${limit}
-            `;
-          }
+          rows = cursorTs
+            ? await sql<Transaction[]>`
+                SELECT * FROM transactions
+                WHERE user_id = ${uid}
+                  AND date::timestamptz >= ${start}::timestamptz
+                  AND date::timestamptz <= ${end}::timestamptz
+                  AND (date::timestamptz < ${cursorTs}::timestamptz
+                       OR (date::timestamptz = ${cursorTs}::timestamptz AND id < ${cursorId!}))
+                ORDER BY date DESC, id DESC LIMIT ${limit}
+              `
+            : await sql<Transaction[]>`
+                SELECT * FROM transactions
+                WHERE user_id = ${uid}
+                  AND date::timestamptz >= ${start}::timestamptz
+                  AND date::timestamptz <= ${end}::timestamptz
+                ORDER BY date DESC, id DESC LIMIT ${limit}
+              `;
         } else {
           countRow = await sql`
             SELECT COUNT(*) as total, COALESCE(SUM(nominal), 0) as amount FROM transactions
             WHERE user_id = ${uid}
           `;
-          
-          if (cursor) {
-            rows = await sql<Transaction[]>`
-              SELECT * FROM transactions WHERE user_id = ${uid} AND date::timestamptz < ${cursor}::timestamptz ORDER BY date DESC LIMIT ${limit}
-            `;
-          } else {
-            rows = await sql<Transaction[]>`
-              SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC LIMIT ${limit}
-            `;
-          }
+          rows = cursorTs
+            ? await sql<Transaction[]>`
+                SELECT * FROM transactions
+                WHERE user_id = ${uid}
+                  AND (date::timestamptz < ${cursorTs}::timestamptz
+                       OR (date::timestamptz = ${cursorTs}::timestamptz AND id < ${cursorId!}))
+                ORDER BY date DESC, id DESC LIMIT ${limit}
+              `
+            : await sql<Transaction[]>`
+                SELECT * FROM transactions WHERE user_id = ${uid} ORDER BY date DESC, id DESC LIMIT ${limit}
+              `;
         }
 
         const hasMore = rows.length === limit;
+        const lastRow = rows[rows.length - 1];
         return {
           success: true,
           data: rows,
           totalCount: Number(countRow[0].total),
           totalAmount: Number(countRow[0].amount),
           hasMore,
-          nextCursor: hasMore ? rows[rows.length - 1].date : null,
+          nextCursor:
+            hasMore && lastRow ? `${lastRow.date}|${lastRow.id}` : null,
         };
       })
 
       .post(
         "/",
         async ({ uid, body }) => {
-          const { id, name, nominal, kategori, keterangan, date, source, details } = body;
+          const {
+            id,
+            name,
+            nominal,
+            kategori,
+            keterangan,
+            date,
+            source,
+            details,
+          } = body;
           await sql`
             INSERT INTO transactions (id, user_id, name, nominal, kategori, keterangan, date, source, details)
             VALUES (${id}, ${uid}, ${name}, ${nominal}, ${kategori}, ${keterangan ?? ""}, ${date}, ${source ?? "Web"}, ${JSON.stringify(details ?? {})})
@@ -75,18 +165,24 @@ export const transactionRoutes = (app: Elysia) =>
         },
         {
           body: t.Object({
-            id: t.String(), name: t.String(), nominal: t.Number(), kategori: t.String(),
-            keterangan: t.Optional(t.String()), date: t.String(), source: t.Optional(t.String()),
+            id: t.String(),
+            name: t.String(),
+            nominal: t.Number(),
+            kategori: t.String(),
+            keterangan: t.Optional(t.String()),
+            date: t.String(),
+            source: t.Optional(t.String()),
             details: t.Optional(t.Any()),
           }),
-        }
+        },
       )
 
       .put(
         "/:id",
         async ({ uid, params, body }) => {
           const { id } = params;
-          const { name, nominal, kategori, keterangan, date, source, details } = body;
+          const { name, nominal, kategori, keterangan, date, source, details } =
+            body;
           const result = await sql`
             UPDATE transactions
             SET name = ${name}, nominal = ${nominal}, kategori = ${kategori},
@@ -94,16 +190,21 @@ export const transactionRoutes = (app: Elysia) =>
                 details = ${JSON.stringify(details ?? {})}
             WHERE id = ${id} AND user_id = ${uid}
           `;
-          if (result.count === 0) return { success: false, message: "Transaksi tidak ditemukan" };
+          if (result.count === 0)
+            return { success: false, message: "Transaksi tidak ditemukan" };
           return { success: true };
         },
         {
           body: t.Object({
-            name: t.String(), nominal: t.Number(), kategori: t.String(),
-            keterangan: t.Optional(t.String()), date: t.String(), source: t.Optional(t.String()),
+            name: t.String(),
+            nominal: t.Number(),
+            kategori: t.String(),
+            keterangan: t.Optional(t.String()),
+            date: t.String(),
+            source: t.Optional(t.String()),
             details: t.Optional(t.Any()),
           }),
-        }
+        },
       )
 
       .delete("/:id", async ({ uid, params }) => {
@@ -121,5 +222,5 @@ export const transactionRoutes = (app: Elysia) =>
         });
         await sql`DELETE FROM transactions WHERE id = ${params.id} AND user_id = ${uid}`;
         return { success: true };
-      })
+      }),
   );

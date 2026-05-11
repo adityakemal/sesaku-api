@@ -99,6 +99,14 @@ export async function initDb() {
 
   // ── Migrations ─────────────────────────────────────────
 
+  // pg_trgm: enables indexed ILIKE '%keyword%' search
+  await sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_transactions_search_trgm
+    ON transactions USING GIN (
+      (name || ' ' || kategori || ' ' || COALESCE(keterangan, '')) gin_trgm_ops
+    )
+  `;
 
 
   // incomes: add date column if missing (old schema had month)
