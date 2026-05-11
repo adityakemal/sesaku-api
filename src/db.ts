@@ -99,29 +99,7 @@ export async function initDb() {
 
   // ── Migrations ─────────────────────────────────────────
 
-  // budget_entries to incomes migration
-  const budgetExists = await sql`
-    SELECT table_name FROM information_schema.tables
-    WHERE table_name = 'budget_entries'
-  `;
-  if (budgetExists.length > 0) {
-    const incomesExists = await sql`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_name = 'incomes'
-    `;
-    if (incomesExists.length === 0) {
-      await sql`ALTER TABLE budget_entries RENAME TO incomes`;
-      const idxExists = await sql`
-        SELECT indexname FROM pg_indexes
-        WHERE tablename = 'incomes' AND indexname = 'idx_budget_entries_user_date'
-      `;
-      if (idxExists.length > 0) {
-        await sql`ALTER INDEX idx_budget_entries_user_date RENAME TO idx_incomes_user_date`;
-      }
-    } else {
-      // Both exist? Might have created incomes, so just drop budget_entries if empty or ignore
-    }
-  }
+
 
   // incomes: add date column if missing (old schema had month)
   const hasDateCol = await sql`
