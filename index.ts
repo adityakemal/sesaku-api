@@ -6,7 +6,7 @@ import { initDb } from "./src/db";
 import { authRoutes } from "./src/routes/auth";
 import { transactionRoutes } from "./src/routes/transactions";
 import { categoryRoutes } from "./src/routes/categories";
-import { budgetRoutes } from "./src/routes/budget";
+import { incomeRoutes } from "./src/routes/income";
 import { stateRoutes } from "./src/routes/state";
 import { ocrRoutes } from "./src/routes/ocr";
 import { workspaceRoutes } from "./src/routes/workspace";
@@ -238,7 +238,7 @@ const app = new Elysia()
 
   .use(transactionRoutes)
   .use(categoryRoutes)
-  .use(budgetRoutes)
+  .use(incomeRoutes)
   .use(stateRoutes)
   .use(ocrRoutes)
   .use(workspaceRoutes)

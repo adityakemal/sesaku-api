@@ -71,9 +71,9 @@ export async function initDb() {
     )
   `;
 
-  // ── Budget Entries ─────────────────────────────────────
+  // ── Incomes (formerly Budget Entries) ────────────────────
   await sql`
-    CREATE TABLE IF NOT EXISTS budget_entries (
+    CREATE TABLE IF NOT EXISTS incomes (
       id         TEXT PRIMARY KEY,
       user_id    TEXT NOT NULL,
       date       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -82,7 +82,7 @@ export async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
-  await sql`CREATE INDEX IF NOT EXISTS idx_budget_entries_user_date ON budget_entries (user_id, date)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_incomes_user_date ON incomes (user_id, date)`;
 
   // ── Plans ──────────────────────────────────────────────
   await sql`
@@ -99,21 +99,45 @@ export async function initDb() {
 
   // ── Migrations ─────────────────────────────────────────
 
-  // budget_entries: add date column if missing (old schema had month)
+  // budget_entries to incomes migration
+  const budgetExists = await sql`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_name = 'budget_entries'
+  `;
+  if (budgetExists.length > 0) {
+    const incomesExists = await sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_name = 'incomes'
+    `;
+    if (incomesExists.length === 0) {
+      await sql`ALTER TABLE budget_entries RENAME TO incomes`;
+      const idxExists = await sql`
+        SELECT indexname FROM pg_indexes
+        WHERE tablename = 'incomes' AND indexname = 'idx_budget_entries_user_date'
+      `;
+      if (idxExists.length > 0) {
+        await sql`ALTER INDEX idx_budget_entries_user_date RENAME TO idx_incomes_user_date`;
+      }
+    } else {
+      // Both exist? Might have created incomes, so just drop budget_entries if empty or ignore
+    }
+  }
+
+  // incomes: add date column if missing (old schema had month)
   const hasDateCol = await sql`
     SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'budget_entries' AND column_name = 'date'
+    WHERE table_name = 'incomes' AND column_name = 'date'
   `;
   if (hasDateCol.length === 0) {
-    await sql`ALTER TABLE budget_entries ADD COLUMN date TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+    await sql`ALTER TABLE incomes ADD COLUMN date TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
   }
   const hasMonthCol = await sql`
     SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'budget_entries' AND column_name = 'month'
+    WHERE table_name = 'incomes' AND column_name = 'month'
   `;
   if (hasMonthCol.length > 0) {
-    await sql`UPDATE budget_entries SET date = (month || '-01')::timestamptz WHERE date IS NULL`;
-    await sql`ALTER TABLE budget_entries DROP COLUMN month`;
+    await sql`UPDATE incomes SET date = (month || '-01')::timestamptz WHERE date IS NULL`;
+    await sql`ALTER TABLE incomes DROP COLUMN month`;
   }
 
   // transactions: add user_id if missing
@@ -164,7 +188,7 @@ export async function initDb() {
     for (const row of settingsBudgets) {
       const month = row.key.replace("budget_", "");
       await sql`
-        INSERT INTO budget_entries (id, user_id, date, amount)
+        INSERT INTO incomes (id, user_id, date, amount)
         VALUES (gen_random_uuid()::text, ${row.user_id}, ${(month + "-01")}::timestamptz, ${parseInt(row.value, 10) || 0})
         ON CONFLICT DO NOTHING
       `;

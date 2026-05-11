@@ -12,7 +12,7 @@ export const stateRoutes = (app: Elysia) =>
           SELECT id, user_id, name, created_at FROM categories WHERE user_id = ${uid} ORDER BY name
         `,
         sql<{ total: string }[]>`
-          SELECT COALESCE(SUM(amount), 0)::text AS total FROM budget_entries WHERE user_id = ${uid}
+          SELECT COALESCE(SUM(amount), 0)::text AS total FROM incomes WHERE user_id = ${uid}
         `,
         sql<{ total: string }[]>`
           SELECT COALESCE(SUM(nominal), 0)::text AS total FROM transactions WHERE user_id = ${uid}
@@ -22,7 +22,7 @@ export const stateRoutes = (app: Elysia) =>
       return {
         transactions: [], // Return empty array to not break legacy store code immediately, but it's no longer used
         categories,
-        totalBudget: Number(budgetRow.total),
+        totalIncome: Number(budgetRow.total),
         totalTransaction: Number(txRow.total),
       };
     })

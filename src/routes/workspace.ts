@@ -79,7 +79,7 @@ export const workspaceRoutes = (app: Elysia) =>
         const spaces = [
           {
             id: mySpace[0].id,
-            name: "My Budget Space",
+            name: "My Income Space",
             isOwner: true
           }
         ];
@@ -94,7 +94,7 @@ export const workspaceRoutes = (app: Elysia) =>
         invitedSpaces.forEach(space => {
           spaces.push({
             id: space.id,
-            name: `${space.name} Budget Space`,
+            name: `${space.name} Income Space`,
             isOwner: false
           });
         });

@@ -52,7 +52,7 @@ export interface User {
   created_at: string;
 }
 
-export interface MonthlyBudget {
+export interface MonthlyIncome {
   month: string; // "YYYY-MM"
   amount: number;
 }
@@ -60,6 +60,6 @@ export interface MonthlyBudget {
 export interface AppState {
   transactions: Transaction[];
   categories: Category[];
-  defaultBudget: number;
-  monthlyBudgets: MonthlyBudget[];
+  defaultIncome: number;
+  monthlyIncomes: MonthlyIncome[];
 }

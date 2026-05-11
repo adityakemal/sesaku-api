@@ -1,14 +1,13 @@
-
 import { Elysia, t } from "elysia";
 import sql from "../db";
 
-export const budgetRoutes = new Elysia()
-  .group("/budget", (app) =>
+export const incomeRoutes = new Elysia()
+  .group("/income", (app) =>
     app
       .get("/", async ({ uid }) => {
         return await sql`
           SELECT id, date, amount, note, created_at
-          FROM budget_entries
+          FROM incomes
           WHERE user_id = ${uid}
           ORDER BY date DESC
         `;
@@ -18,7 +17,7 @@ export const budgetRoutes = new Elysia()
         "/",
         async ({ uid, body }) => {
           const [row] = await sql`
-            INSERT INTO budget_entries (id, user_id, date, amount, note)
+            INSERT INTO incomes (id, user_id, date, amount, note)
             VALUES (${body.id || crypto.randomUUID()}, ${uid}, ${body.date || new Date().toISOString()}, ${body.amount}, ${body.note || ""})
             RETURNING id, date, amount, note, created_at
           `;
@@ -38,7 +37,7 @@ export const budgetRoutes = new Elysia()
         "/:id",
         async ({ uid, params, body, set }) => {
           const [row] = await sql`
-            UPDATE budget_entries
+            UPDATE incomes
             SET date = ${body.date}, amount = ${body.amount}, note = ${body.note || ""}
             WHERE id = ${params.id} AND user_id = ${uid}
             RETURNING id, date, amount, note, created_at
@@ -57,7 +56,7 @@ export const budgetRoutes = new Elysia()
 
       .delete("/:id", async ({ uid, params, set }) => {
         const result = await sql`
-          DELETE FROM budget_entries WHERE id = ${params.id} AND user_id = ${uid}
+          DELETE FROM incomes WHERE id = ${params.id} AND user_id = ${uid}
         `;
         if (result.count === 0) { set.status = 404; return { message: "Tidak ditemukan" }; }
         return { success: true };

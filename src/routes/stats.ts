@@ -20,10 +20,10 @@ export const statsRoutes = (app: Elysia) =>
         const rangeDays = dayjs(end).diff(dayjs(start), "day") + 1;
 
         const [[global], [rangeRow]] = await Promise.all([
-          // Global all-time totals for budget progress bar
-          sql<{ budget: string; spent: string }[]>`
+          // Global all-time totals for income progress bar
+          sql<{ income: string; spent: string }[]>`
             SELECT
-              (SELECT COALESCE(SUM(amount), 0) FROM budget_entries WHERE user_id = ${uid})::text AS budget,
+              (SELECT COALESCE(SUM(amount), 0) FROM incomes WHERE user_id = ${uid})::text AS income,
               (SELECT COALESCE(SUM(nominal), 0) FROM transactions WHERE user_id = ${uid})::text AS spent
           `,
           // Range-filtered totals + count for stat cards
@@ -38,7 +38,7 @@ export const statsRoutes = (app: Elysia) =>
           `,
         ]);
 
-        const totalBudget = Number(global.budget);
+        const totalIncome = Number(global.income);
         const totalTransaction = Number(global.spent);
         const rangeTotal = Number(rangeRow.total);
         const rangeCount = Number(rangeRow.count);
@@ -60,7 +60,7 @@ export const statsRoutes = (app: Elysia) =>
         return {
           success: true,
           data: {
-            totalBudget,
+            totalIncome,
             totalTransaction,
             rangeTotal,
             rangeCount,
