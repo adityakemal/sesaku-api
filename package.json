@@ -18,9 +18,11 @@
     "@elysiajs/cookie": "^0.8.0",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/jwt": "^1.4.2",
+    "@qs-coder/heic-convert": "^2.3.1",
     "dayjs": "^1.11.20",
     "elysia": "^1.4.28",
     "mindee": "^5.2.0",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "sharp": "^0.34.5"
   }
 }

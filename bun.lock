@@ -8,10 +8,12 @@
         "@elysiajs/cookie": "^0.8.0",
         "@elysiajs/cors": "^1.4.2",
         "@elysiajs/jwt": "^1.4.2",
+        "@qs-coder/heic-convert": "^2.3.1",
         "dayjs": "^1.11.20",
         "elysia": "^1.4.28",
         "mindee": "^5.2.0",
         "postgres": "^3.4.9",
+        "sharp": "^0.34.5",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -88,6 +90,12 @@
 
     "@pdf-lib/upng": ["@pdf-lib/upng@1.0.1", "", { "dependencies": { "pako": "^1.0.10" } }, "sha512-dQK2FUMQtowVP00mtIksrlZhdFXQZPC+taih1q4CvPZ5vqdxR/LKBaFg0oAfzd1GlHZXXSPdQfzQnt+ViGvEIQ=="],
 
+    "@qs-coder/heic-convert": ["@qs-coder/heic-convert@2.3.1", "", { "dependencies": { "@qs-coder/heic-decode": "^2.1.1", "jpeg-js": "^0.4.4", "pngjs": "^6.0.0" } }, "sha512-hJDdWEijcxBhSladBw4xFbvZfSks7m4vZO6knN0IEWCCVtyD4DnmUzcoDoN/B9+qccYhxBbnxC9Yd5GMa5L9uA=="],
+
+    "@qs-coder/heic-decode": ["@qs-coder/heic-decode@2.1.1", "", { "dependencies": { "@qs-coder/libheif-js": "^1.19.7" } }, "sha512-ZnDQreHmT+xmviqvzRd9AiERa7Ya/SHqRl5HjY2Kv8nYoe6bdu3tOYMk4+upBo0VO0KcMWno7gTnbag1GTel7A=="],
+
+    "@qs-coder/libheif-js": ["@qs-coder/libheif-js@1.19.7", "", {}, "sha512-mP6OQE68wHAewUWJqLPZnNZ1vYKWDHfvr7hJmLvAjiFLjGobmd8wfCSEqQ1AeoKgezEE4r2jgKBzaL0l6D/2Zg=="],
+
     "@sinclair/typebox": ["@sinclair/typebox@0.34.49", "", {}, "sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A=="],
 
     "@tokenizer/inflate": ["@tokenizer/inflate@0.4.1", "", { "dependencies": { "debug": "^4.4.3", "token-types": "^6.1.1" } }, "sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA=="],
@@ -148,6 +156,8 @@
 
     "jose": ["jose@6.2.3", "", {}, "sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw=="],
 
+    "jpeg-js": ["jpeg-js@0.4.4", "", {}, "sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg=="],
+
     "memoirist": ["memoirist@0.4.0", "", {}, "sha512-zxTgA0mSYELa66DimuNQDvyLq36AwDlTuVRbnQtB+VuTcKWm5Qc4z3WkSpgsFWHNhexqkIooqpv4hdcqrX5Nmg=="],
 
     "mindee": ["mindee@5.2.0", "", { "dependencies": { "commander": "^14.0.3", "file-type": "^21.3.3", "tmp": "^0.2.5", "undici": ">=6.24.0 <7.0.0 || >=7.24.0 <8.0.0" }, "optionalDependencies": { "@cantoo/pdf-lib": "^2.5.3", "node-poppler": "^9.1.1", "pdf.js-extract": "~0.2.1", "sharp": "~0.34.5" }, "bin": { "mindeeV1": "bin/mindeeV1.js", "mindeeV2": "bin/mindeeV2.js" } }, "sha512-NcbWHQ5gAwTSNHjCAkm4gNYL601rWPlwWhEqsGvk8XRsUtdNlCJWtAMdfbD+dkvwkdj3Hg2/1INwdOhkPDgE+A=="],
@@ -165,6 +175,8 @@
     "pako": ["pako@1.0.11", "", {}, "sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw=="],
 
     "pdf.js-extract": ["pdf.js-extract@0.2.1", "", { "dependencies": { "dommatrix": "0.0.24", "web-streams-polyfill": "3.2.0" } }, "sha512-oUs5KaTVCelIyiBajCx3zAZKurkN9oVwRdqbSeDqeofddxNuwJRur86fCETvKZ/tX5nZJUSZWq3ie76PsArz7A=="],
+
+    "pngjs": ["pngjs@6.0.0", "", {}, "sha512-TRzzuFRRmEoSW/p1KVAmiOgPco2Irlah+bGFCeNfJXxxYGwSw7YwAOAcd7X28K/m5bjBWKsC29KyoMfHbypayg=="],
 
     "postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
 

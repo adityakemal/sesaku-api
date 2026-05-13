@@ -1,4 +1,7 @@
 import { Elysia, t } from "elysia";
+// import { readFileSync } from "fs";
+import heicConvert from "@qs-coder/heic-convert";
+import sharp from "sharp";
 
 const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY ?? "";
 const OCR_SPACE_URL = "https://api.ocr.space/parse/image";
@@ -9,18 +12,57 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // ── Step 1: OCR image → raw text ─────────────────────────────────────────────
 async function extractTextFromImage(file: File): Promise<string> {
+  let arrayBuffer = await file.arrayBuffer();
+  let mimeType = file.type || "image/jpeg";
+
+  const isHeic =
+    file.name.toLowerCase().endsWith(".heic") ||
+    mimeType.toLowerCase() === "image/heic";
+
+  if (isHeic) {
+    try {
+      console.log("Converting HEIC to JPEG on backend...");
+      const outputBuffer = await heicConvert({
+        buffer: Buffer.from(arrayBuffer),
+        format: "JPEG",
+        quality: 0.9,
+      });
+
+      console.log("Resizing and compressing HEIC result with sharp...");
+      const compressedBuffer = await sharp(Buffer.from(outputBuffer))
+        .resize({
+          width: 1800,
+          height: 1800,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+
+      arrayBuffer = compressedBuffer;
+      mimeType = "image/jpeg";
+    } catch (err) {
+      console.error("Backend HEIC conversion failed:", err);
+    }
+  }
+
+  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  const base64Image = `data:${mimeType};base64,${base64}`;
+
   const formData = new FormData();
   formData.append("apikey", OCR_SPACE_API_KEY);
-  formData.append("file", file);
-  formData.append("language", "eng");
+  formData.append("base64Image", base64Image);
+  formData.append("language", "auto");
   formData.append("OCREngine", "3");
-  formData.append("isTable", "false");
+  // formData.append("scale", "true");
 
   const response = await fetch(OCR_SPACE_URL, {
     method: "POST",
     body: formData,
   });
   const result = await response.json();
+  console.log(result, " OCR RESULTTTTTTTTTTTTTTTTT");
+
   return result?.ParsedResults?.[0]?.ParsedText ?? "";
 }
 
@@ -45,11 +87,11 @@ async function parseReceiptWithGroq(rawText: string) {
           content: `Ekstraktor data struk belanja. Output: JSON murni, tanpa markdown.
 Aturan:
 - Hanya data yang ada di teks. Tidak ada → null.
-- name: nama toko/penjual, jika tidak ada → null.
+- name: nama toko atau penjual biasanya di paling atas.
 - nominal: nilai TOTAL AKHIR tertera (setelah diskon), jangan hitung manual.
 - items: hanya item yang ada nama+harganya.
   - name: nama item.
-  - price = total baris (sudah × qty).
+  - price = total baris (sudah × qty), biasanya sudah formated seperti "Rp x,xxx" atau "x.xxx" jadikan number xxxx.
   - qty = posisi kuantitas di struk belanja sering BERBEDA BEDA. terkadang ada sebelum nama barang, sesudah nama barang atau di baris terpisah, terkadang format kuantitas misal 2 item ditulis seperti "2x" atau "2*" atau "@2" atau "x2" atau "2".
 - date: format YYYY-MM-DD, gunakan hari ini jika tidak ada.
 Format:
