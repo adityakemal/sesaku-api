@@ -91,11 +91,11 @@ Aturan:
 - nominal: nilai TOTAL AKHIR tertera (setelah diskon), jangan hitung manual.
 - items: hanya item yang ada nama+harganya.
   - name: nama item.
-  - price = total baris (sudah × qty), biasanya sudah formated seperti "Rp x,xxx" atau "x.xxx" jadikan number xxxx.
+  - price = total baris (sudah × qty), format harus number, contoh : 13000 BUKAN "13000" atau "13.000" atau "13,000" atau "Rp 13.000" atau "Rp13.000".
   - qty = posisi kuantitas di struk belanja sering BERBEDA BEDA. terkadang ada sebelum nama barang, sesudah nama barang atau di baris terpisah, terkadang format kuantitas misal 2 item ditulis seperti "2x" atau "2*" atau "@2" atau "x2" atau "2".
 - date: format YYYY-MM-DD, gunakan hari ini jika tidak ada.
-Format:
-{"name":string|null,"nominal":number|null,"kategori":"Makanan|Transport|Belanja|Hiburan|Tagihan|Lainnya","keterangan":"Scan stuk by AI","date":"YYYY-MM-DD","items":[{"name":string,"price":number, qty:number}]}`,
+FORMAT:
+{"name":string|null,"nominal":number|null,"kategori":"Makanan|Transport|Belanja|Hiburan|Tagihan","keterangan":"Scan Struk by AI","date":"YYYY-MM-DD","items":[{"name":string,"price":number, qty:number}]}`,
         },
         {
           role: "user",
