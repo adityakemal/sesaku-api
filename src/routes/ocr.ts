@@ -14,9 +14,12 @@ async function extractTextFromImage(file: File): Promise<string> {
   formData.append("file", file);
   formData.append("language", "eng");
   formData.append("OCREngine", "3");
-  formData.append("isTable", "true");
+  formData.append("isTable", "false");
 
-  const response = await fetch(OCR_SPACE_URL, { method: "POST", body: formData });
+  const response = await fetch(OCR_SPACE_URL, {
+    method: "POST",
+    body: formData,
+  });
   const result = await response.json();
   return result?.ParsedResults?.[0]?.ParsedText ?? "";
 }
@@ -39,38 +42,22 @@ async function parseReceiptWithGroq(rawText: string) {
       messages: [
         {
           role: "system",
-          content: `Kamu adalah ekstractor data struk belanja. Aturan WAJIB:
-1. HANYA ekstrak data yang BENAR-BENAR ADA di teks. JANGAN mengarang, menebak, atau mengisi data yang tidak ada.
-2. Jika suatu field tidak ditemukan, isi dengan null (bukan string kosong, bukan angka 0).
-3. Untuk "nominal": ambil nilai TOTAL AKHIR yang tertera (setelah diskon). JANGAN menghitung manual.
-4. Untuk "items":
-   - Hanya masukkan item yang jelas tertulis beserta harganya.
-   - Jika ada quantity (contoh: "2 x Ayam Goreng Rp24.000"), gabungkan ke name menjadi "2x Ayam Goreng" dan price = qty × harga_satuan (hasilnya 48000).
-   - Field "price" selalu merupakan TOTAL harga per baris item (sudah dikalikan qty), bukan harga per satuan.
-   - Jika harga item tidak ada di teks, jangan masukkan item tersebut.
-5. Kembalikan HANYA JSON murni, tanpa markdown, tanpa penjelasan.`,
+          content: `Ekstraktor data struk belanja. Output: JSON murni, tanpa markdown.
+Aturan:
+- Hanya data yang ada di teks. Tidak ada → null.
+- name: nama toko/penjual, jika tidak ada → null.
+- nominal: nilai TOTAL AKHIR tertera (setelah diskon), jangan hitung manual.
+- items: hanya item yang ada nama+harganya.
+  - name: nama item.
+  - price = total baris (sudah × qty).
+  - qty = posisi kuantitas di struk belanja sering BERBEDA BEDA. terkadang ada sebelum nama barang, sesudah nama barang atau di baris terpisah, terkadang format kuantitas misal 2 item ditulis seperti "2x" atau "2*" atau "@2" atau "x2" atau "2".
+- date: format YYYY-MM-DD, gunakan hari ini jika tidak ada.
+Format:
+{"name":string|null,"nominal":number|null,"kategori":"Makanan|Transport|Belanja|Hiburan|Tagihan|Lainnya","keterangan":"Scan stuk by AI","date":"YYYY-MM-DD","items":[{"name":string,"price":number, qty:number}]}`,
         },
         {
           role: "user",
-          content: `Ekstrak data dari teks struk ini menjadi JSON.
-
-Teks struk:
-${rawText}
-
-Format JSON yang harus dikembalikan:
-{
-  "name": "nama toko/merchant yang tertera, atau null jika tidak ada",
-  "nominal": total_akhir_angka_atau_null,
-  "kategori": "pilih satu: Makanan | Transport | Belanja | Hiburan | Tagihan | Lainnya",
-  "keterangan": "ringkasan 1 kalimat dari isi struk berdasarkan teks yang ada",
-  "date": "YYYY-MM-DD dari tanggal yang tertera, atau tanggal hari ini jika tidak ada",
-  "items": [
-    { "name": "2x Ayam Goreng", "price": 48000 },
-    { "name": "Es Teh", "price": 8000 }
-  ]
-}
-
-Contoh item dengan qty: jika teks berisi "2 x Ayam Goreng Rp24.000", maka name="2x Ayam Goreng" dan price=48000 (bukan 24000).`,
+          content: rawText,
         },
       ],
     }),
@@ -83,7 +70,9 @@ Contoh item dengan qty: jika teks berisi "2 x Ayam Goreng Rp24.000", maka name="
   console.log("====================");
 
   if (data.error) {
-    throw new Error(`Groq API error: ${data.error.message ?? JSON.stringify(data.error)}`);
+    throw new Error(
+      `Groq API error: ${data.error.message ?? JSON.stringify(data.error)}`,
+    );
   }
 
   const rawJson: string = data?.choices?.[0]?.message?.content ?? "";
@@ -113,7 +102,11 @@ export const ocrRoutes = (app: Elysia) =>
         try {
           // Step 1: extract text via OCR.space
           const rawText = await extractTextFromImage(file);
-          console.log("=== OCR.space Raw Text ===\n", rawText, "\n=========================");
+          console.log(
+            "=== OCR.space Raw Text ===\n",
+            rawText,
+            "\n=========================",
+          );
 
           if (!rawText.trim()) {
             set.status = 422;
@@ -122,7 +115,11 @@ export const ocrRoutes = (app: Elysia) =>
 
           // Step 2: parse to FE-ready JSON via Groq
           const parsed = await parseReceiptWithGroq(rawText);
-          console.log("=== Parsed Result ===\n", parsed, "\n====================");
+          console.log(
+            "=== Parsed Result ===\n",
+            parsed,
+            "\n====================",
+          );
 
           return parsed;
         } catch (error: any) {
