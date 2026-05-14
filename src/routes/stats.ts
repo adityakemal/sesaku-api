@@ -104,7 +104,7 @@ export const statsRoutes = (app: Elysia) =>
       })
 
       // ── 3. SPENDING TREND ──────────────────────────────────────
-      // Aggregated per-day rows in the range. FE groups into weekly/daily/monthly.
+      // Aggregated per-day rows for selected month (or all-time if no params).
       .get("/spending-trend", async ({ uid, query }) => {
         const start = query.start
           ? new Date(query.start).toISOString()
@@ -113,22 +113,36 @@ export const statsRoutes = (app: Elysia) =>
           ? new Date(query.end).toISOString()
           : dayjs().endOf("month").toISOString();
 
-        // Aggregate per calendar day (returns date as YYYY-MM-DD string)
-        const rows = await sql<{ day: string; total: string }[]>`
+        const rows = await sql<{ day: string; kategori: string; total: string }[]>`
           SELECT
-            DATE(date::timestamptz AT TIME ZONE 'Asia/Jakarta') AS day,
+            DATE(date::timestamptz AT TIME ZONE 'Asia/Jakarta')::text AS day,
+            kategori,
             SUM(nominal)::text AS total
           FROM transactions
           WHERE user_id = ${uid}
             AND date::timestamptz >= ${start}::timestamptz
             AND date::timestamptz <= ${end}::timestamptz
-          GROUP BY day
+          GROUP BY day, kategori
           ORDER BY day ASC
         `;
 
+        const dataMap = new Map<string, { day: string; total: number; categories: Record<string, number> }>();
+        for (const r of rows) {
+          const day = r.day;
+          const total = Number(r.total);
+          const kategori = r.kategori || "Lainnya";
+
+          if (!dataMap.has(day)) {
+            dataMap.set(day, { day, total: 0, categories: {} });
+          }
+          const item = dataMap.get(day)!;
+          item.total += total;
+          item.categories[kategori] = total;
+        }
+
         return {
           success: true,
-          data: rows.map((r) => ({ day: r.day, total: Number(r.total) })),
+          data: Array.from(dataMap.values()).sort((a, b) => a.day.localeCompare(b.day)),
         };
       })
 
