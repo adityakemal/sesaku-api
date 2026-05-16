@@ -13,6 +13,7 @@ import { workspaceRoutes } from "./src/routes/workspace";
 import { planRoutes } from "./src/routes/plans";
 import { statsRoutes } from "./src/routes/stats";
 import { logActivity } from "./src/logger";
+import dayjs from "dayjs";
 
 const PORT = Number(process.env.PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "sesaku_jwt_secret_lokal";
@@ -96,7 +97,12 @@ const app = new Elysia()
     // Forbidden Workspace
     if (set.status === 403 || error?.message === "Forbidden workspace") {
       set.status = 403;
-      return { success: false, message: "Akses ke workspace ditolak atau kamu sudah dihapus dari workspace ini.", code: "WORKSPACE_FORBIDDEN" };
+      return {
+        success: false,
+        message:
+          "Akses ke workspace ditolak atau kamu sudah dihapus dari workspace ini.",
+        code: "WORKSPACE_FORBIDDEN",
+      };
     }
 
     // Default
@@ -105,8 +111,10 @@ const app = new Elysia()
     return { success: false, message: "Terjadi kesalahan server" };
   })
 
-  // Request logger — runs after response (mutations + auth only)
-  .onAfterHandle(({ request, path, uid, body }) => {
+  // Request logger — runs after response
+  // console.log for every non-health request; logActivity only for mutations
+  // not handled by their own route (workspace/auth log themselves)
+  .onAfterHandle(({ request, path, uid, userName, body }) => {
     const method = request.method;
     if (path === "/health" || !uid) return;
 
@@ -119,8 +127,12 @@ const app = new Elysia()
       `[${ts}] ${method} ${path} — ${(uid as string).slice(0, 8)}...`,
     );
 
-    if (method === "GET") return;
-    if (method === "DELETE") return;
+    // Only persist activity for mutation methods on centrally-logged paths
+    if (method === "GET" || method === "DELETE") return;
+
+    // workspace and auth handle their own logActivity — skip to avoid duplicates
+    const SELF_LOGGED_PREFIXES = ["/workspace", "/auth"];
+    if (SELF_LOGGED_PREFIXES.some((p) => path.startsWith(p))) return;
 
     const action = path.split("/")[1] || path;
     const label: Record<string, string> = {
@@ -140,7 +152,7 @@ const app = new Elysia()
           const nominal = b.nominal
             ? Number(b.nominal).toLocaleString("id-ID")
             : "0";
-          detail = `${name}: Rp ${nominal}`;
+          detail = `${name} · Rp ${nominal} · ${dayjs(b.date).format("DD/MM/YYYY")} \n by ${userName ?? "?"}`;
         } else if (path.includes("budget")) {
           const amt = b.amount ? Number(b.amount).toLocaleString("id-ID") : "0";
           const label = b.note || "Budget";
@@ -176,6 +188,7 @@ const app = new Elysia()
     }
     const uid = payload.sub as string;
     const email = payload.email as string;
+    const userName = (payload.name as string | undefined) ?? email;
     if (!uid) {
       set.status = 401;
       throw new Error("Invalid token");
@@ -202,7 +215,7 @@ const app = new Elysia()
     // realUid: the actual logged in user (used for managing own spaces/members)
     // uid: the active workspace user_id (used for querying tx, categories, etc)
     // userEmail: the logged in user's email
-    return { uid: activeUid, realUid: uid, userEmail: email };
+    return { uid: activeUid, realUid: uid, userEmail: email, userName };
   })
 
   // Activity logs endpoint — cursor-based pagination
@@ -257,7 +270,8 @@ Bun.serve({
       "Access-Control-Allow-Origin": origin || ALLOWED_ORIGIN,
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, x-workspace-id",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, x-workspace-id",
     };
 
     // Handle preflight before Elysia (auth guard would block OPTIONS)

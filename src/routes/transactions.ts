@@ -150,7 +150,6 @@ export const transactionRoutes = (app: Elysia) =>
             INSERT INTO transactions (id, user_id, name, nominal, kategori, keterangan, date, source, details)
             VALUES (${id}, ${uid}, ${name}, ${nominal}, ${kategori}, ${keterangan ?? ""}, ${date}, ${source ?? "Web"}, ${JSON.stringify(details ?? {})})
           `;
-          await logActivity({ user_id: uid, action: "CREATE transaksi", detail: name, status: "success" });
           return { success: true };
         },
         {
@@ -187,7 +186,6 @@ export const transactionRoutes = (app: Elysia) =>
           `;
           if (result.count === 0)
             return { success: false, message: "Transaksi tidak ditemukan" };
-          await logActivity({ user_id: uid, action: "EDIT transaksi", detail: name, status: "success" });
           return { success: true };
         },
         {
