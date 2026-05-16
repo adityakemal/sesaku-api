@@ -14,6 +14,9 @@ import { planRoutes } from "./src/routes/plans";
 import { statsRoutes } from "./src/routes/stats";
 import { logActivity } from "./src/logger";
 import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc"; // Ambil plugin UTC
+
+dayjs.extend(utc); // Aktifkan plugin UTC
 
 const PORT = Number(process.env.PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || "sesaku_jwt_secret_lokal";
@@ -152,7 +155,7 @@ const app = new Elysia()
           const nominal = b.nominal
             ? Number(b.nominal).toLocaleString("id-ID")
             : "0";
-          detail = `${name} · Rp ${nominal} · ${dayjs(b.date).format("DD/MM/YYYY")} \n by ${userName ?? "?"}`;
+          detail = `${name} · Rp ${nominal} · ${dayjs(b.date).utcOffset("+07:00").format("DD/MM/YYYY")} \n by ${userName ?? "?"}`;
         } else if (path.includes("budget")) {
           const amt = b.amount ? Number(b.amount).toLocaleString("id-ID") : "0";
           const label = b.note || "Budget";
@@ -176,7 +179,7 @@ const app = new Elysia()
   .use(authRoutes)
 
   .derive(async ({ jwt, cookie: { auth_token }, set, request }) => {
-    const token = auth_token?.value;
+    const token = auth_token?.value as string | undefined;
     if (!token) {
       set.status = 401;
       throw new Error("Unauthorized");
@@ -224,7 +227,7 @@ const app = new Elysia()
       const limit = Math.min(Number(query.limit) || 20, 50);
       const cursor = Number(query.cursor) || 0;
 
-      const rows =
+      const rows: any =
         cursor > 0
           ? await sql`
             SELECT id, action, detail, status, created_at
